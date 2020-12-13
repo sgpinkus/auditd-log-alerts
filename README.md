@@ -1,0 +1,37 @@
+# SIMPLE AUDITD LOG ALERTS
+The script [auditd_log_alerts.js](./auditd_log_alerts.js) is a minimal NodeJS 12.x script that takes an `auditd.log` on stdin and filters it to zero or more security alert messages. Can work by simply tailing an `auditd.log`, or installed as an audisp plugin (will need to modify script to add somewhere to push alerts to). "Alerts" are just any event that make it through the filter. Alerts have a (baked in) level of severity from 0 (highest) to 7 (mirroring syslog levels). Alert messages are fairly rudimentary digest of the raw auditd events.
+
+What's considered an noteworthy event is based heavily on the open source `audisp-prelude` audisp plugin that came with [auditd-2.8.x][audit_src], and the STIG and other watch set that come packaged with auditd. Script is less sophisticated than `audisp-prelude` but is also much simpler to use (I tried and failed to get prelude working).
+
+# USAGE
+Script can be used as is, providing text messages as output, or imported as a module provide objects as an output (object basically just `{ msg, level }`).
+
+*As is:*
+
+        tail -F auditd.log | node auditd_log_alerts.js
+
+*As a module:* see this [AWS Cloudwatch lambda handler](docs/cloudwatch_reader.skel.js) example, or C&P default console logger from the script and modify to suit.
+
+# ANALYSIS AND DESIGN
+Main requirements and constraints:
+
+  - Single simple script file no config necessary for useful deploy.
+  - Report on close to same events as `audisp-prelude` plugin, plus STIG and other watches.
+  - No support for correlation.
+  - Work as a `audisp` plugin or just like `tail -F audit.log | auditd_log_alerts.js`. It turns out there is very little difference, but as a plugin is more secure.
+
+# NOTES
+
+## SETTING UP AUDITD
+Make /etc/audit/rules.d look something like:
+
+        /etc/audit/rules.d/
+        ├── 10-base-config.rules
+        ├── 30-stig.rules
+        ├── 31-privileged.rules
+        ├── 32-power-abuse.rules
+        ├── 42-injection.rules
+        ├── 43-module-load.rules
+        └── 99-finalize.rules
+
+[audit_src]: http://deb.debian.org/debian/pool/main/a/audit/audit_2.8.4.orig.tar.gz
