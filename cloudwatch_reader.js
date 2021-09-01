@@ -1,3 +1,4 @@
+// Example cloudwatch logs lambda filter. Need to adjust to do something useful like send alert to SNS or Slack.
 const zlib = require('zlib');
 const { linesToEvents, eventToSpec, levels, levelNames } = require('./auditd_log_alerts');
 
