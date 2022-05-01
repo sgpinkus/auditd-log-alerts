@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Very simple online audit.log alert filter / parser. Use in production at own peril. Alerts are based off roughly
  * looking at what audisp-prelude reports on (reports are simpler). Known keyed syscalls are based on audit usr/share rule sets.
