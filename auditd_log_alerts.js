@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 /**
- * Very simple online audit.log alert filter / parser. Use in production at own peril. Alerts are based off roughly
- * looking at what audisp-prelude reports on (reports are simpler). Known keyed syscalls are based on audit usr/share rule sets.
+ * Very simple online audit.log alert filter / parser. Use in production at own peril. Alerts are
+ * based off roughly looking at what audisp-prelude reports on (reports are simpler). Known keyed
+ * syscalls are based on audit usr/share rule sets.
+ * You can import symbols from this file and use (see cloudwatch_reader.js). This file also includes
+ * a convenience parser that read from stdin and prints to stdout. Use like:
+ * `tail -F audit.log | auditd_log_alerts.js` or as audisp plugin. Use these env vars:
+ *   AUDITD_LOG_ALERTS_STDOUT_LOGFMT=custom # or logfmt
+ *   AUDITD_LOG_ALERTS_STDOUT_LEVEL=notice
  */
 
 // Alert levels follow syslog levels.
@@ -50,16 +56,6 @@ const stigWatchLevels = (e = {}) => {
   if (e.key === 'delete' && e.success === 'yes' && /^\/tmp\//.test(e['path-name'])) return levels.debug;
   if (e.success !== 'yes') return levels.error;
   return levels.notice;
-};
-// After processing event some fields are mapped back to something else at display time.
-const fieldNameMap = k => {
-  const _map = {
-    'cwd-cwd': 'cwd',
-    'path-name': 'path',
-    'path-name-1': 'path-1',
-    'path-mode': 'mode',
-  };
-  return _map[k] ? _map[k] : k;
 };
 // Things we want to watch for, a natural lang desc of what they mean and keys to print with the alert.
 const eventSpecs = [
@@ -177,6 +173,7 @@ const eventSpecs = [
 /**
  * Take a series of raw log lines and convert them to event objects. This may entail merging lines belonging to the
  * same logical event.
+ * @returns object representing an auditd event with fields lower cased and flattened.
  */
 function linesToEvents(lines) {
   let currentEvent;
@@ -232,14 +229,6 @@ function mergeSubRecord(a, b, suffix = 0) {
 }
 
 
-// Make string from spec return value of eventToSpec.
-function messageTmpl({ e, desc, fields }) {
-  return Array.from(new Set(fields))
-    .filter(f => Object.keys(e).includes(f))
-    .reduce((a, b) => a + ` ${fieldNameMap(b)}=${e[b]}`, `${desc}:`);
-}
-
-
 /**
  * Parse auditd's stupid log line format. This should work for syslog-ed or audit.log lines (the only diff should be
  * \x1d vs space separating "enriched" lines.
@@ -265,7 +254,9 @@ function parseLine(line) {
 }
 
 
-// Map raw event object to deets above or filter out if non found.
+/**
+ * Add details from eventSpecs to event object.
+ */
 function eventToSpec(e) {
   for (const spec of eventSpecs) {
     if (spec.match(e)) {
@@ -273,40 +264,70 @@ function eventToSpec(e) {
       res.desc = spec.desc instanceof Function ? spec.desc(e) : spec.desc;
       res.fields = spec.fields instanceof Function ? spec.fields(e) : [...spec.fields];
       res.level = spec.level instanceof Function ? spec.level(e) : spec.level;
-      res.msg = messageTmpl(res);
       return res;
     }
   }
 }
 
+const nodeLogLevelMap = {
+  0: 'error',
+  1: 'error',
+  2: 'error',
+  3: 'error',
+  4: 'warn',
+  5: 'warn',
+  6: 'info',
+  7: 'debug',
+  undefined: 'log',
+};
 
-function consoleLog(e = {}) {
+// Map some these fields to something more human readable at display time.
+const fieldNameMap = k => {
   const _map = {
-    0: 'error',
-    1: 'error',
-    2: 'error',
-    3: 'error',
-    4: 'warn',
-    5: 'warn',
-    6: 'info',
-    7: 'debug',
-    undefined: 'log',
+    'cwd-cwd': 'cwd',
+    'path-name': 'path',
+    'path-name-1': 'path-1',
+    'path-mode': 'mode',
   };
-  console[_map[e.level]](`${levelNames[e.level]}: ${e.msg}`);
+  return _map[k] ? _map[k] : k;
+};
+
+const loggers = {
+  custom: (e = {}) => {
+    function messageTmpl({ e, desc, fields }) {
+      return Array.from(new Set(fields))
+        .filter(f => Object.keys(e).includes(f))
+        .reduce((a, b) => a + ` ${fieldNameMap(b)}=${e[b]}`, `${desc}:`);
+    };
+    console[nodeLogLevelMap[e.level]](`${levelNames[e.level]}: ${messageTmpl(e)}`);
+  },
+  logfmt: (e = {}) => {
+    console[nodeLogLevelMap[e.level]](
+      `desc="${e.desc}" level=${levelNames[e.level]} level_code=${e.level} ` +
+      e.fields.map(f => e.e[f] ? `${fieldNameMap(f)}="${e.e[f]}"` : undefined).filter(i => i).join(' ')
+    );
+  }
 }
 
-
 // Example stdin reader. Set as main and: tail -F audit.log | auditd_log_alerts.js or as audisp plugin.
-function stdinReader(eventHandler = consoleLog) { // eslint-disable-line
+function stdinReader() { // eslint-disable-line
+  const level = levels[process.env.AUDITD_LOG_ALERTS_STDOUT_LEVEL] ?? levels['info'];
+  const loggerName = process.env.AUDITD_LOG_ALERTS_STDOUT_LOGFMT ?? 'custom';
+  const logger = loggers[loggerName];
+  if(!loggers[loggerName]) {
+    console.error(`Unknown logger ${loggerName}`);
+    process.exit(1);
+  }
+
   process.stdin.resume();
   process.stdin.setEncoding('utf8');
   process.stdin.on('data', function (text) {
     const lines = text.replace(/^\s*|\s*$/g, '').split('\n');
-    const events = linesToEvents(lines).map(e => eventToSpec(e)).filter(e => e).filter(e => e.level < levels.debug);
-    events.map(e => eventHandler(e));
+    const events = linesToEvents(lines).map(e => eventToSpec(e)).filter(e => e).filter(e => e.level <= level);
+    events.map(e => logger(e));
   });
   process.stdin.on('end', () => {
-    console.log('Read eof');
+    console.warn('Read eof');
     process.exit();
   });
 }
