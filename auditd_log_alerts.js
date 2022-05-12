@@ -57,8 +57,12 @@ const stigWatchLevels = (e = {}) => {
   if (e.success !== 'yes') return levels.error;
   return levels.notice;
 };
-// Things we want to watch for, a natural lang desc of what they mean and keys to print with the alert.
-const eventSpecs = [
+/**
+ * Hardcoded list of things we want to watch for, plus a natural lang desc of what they mean and keys
+ * to print with the alert. The level is a advisory and may not be a very good indication of severity.
+ * There are many more auditd events - see ausearch -m
+ */
+const watchedEventSpecs = [
   {
     match: e => ['DAEMON_ERR', 'DAEMON_ABORT'].includes(e.type),
     desc: 'Auditd Daemon Error',
@@ -201,6 +205,35 @@ function linesToEvents(lines) {
 
 
 /**
+ * Parse auditd's stupid log line format. This should work for syslog-ed or audit.log lines (the only diff should be
+ * \x1d vs space separating "enriched" lines.
+ */
+function parseLine(line) {
+  /* eslint-disable no-control-regex */
+  const _line = line;
+  let record;
+  try {
+    const enriched = /^(.*)msg='(.*)'\x1d?(.*)$/;
+    if (enriched.test(line)) {
+      line = enriched.exec(line).slice(1).join(' ').replace(/^\s*|\s*$/g, '');
+    }
+    while (line) {
+      const [p, k, v] = (/^([^=]+)=("[^"]+"|[^\s\x1d]+)[\s\x1d]*/).exec(line);
+      line = line.slice(p.length);
+      record = record ? record : {};
+      record[k] = v.replace(/^"|"$/g, '');
+    }
+    if(record) {
+      record._id = (/audit\([^:]+:(\d+)\).*/).exec(record.msg)[1];
+    }
+  } catch (e) {
+    console.warn(`Failed to parse log line: ${e} [line="${_line}"]`);
+  }
+  return record;
+}
+
+
+/**
  * Attempt to merge records with the same event ID. Fields are named <type>-<field>[-suffix]. Suffix is used because
  * some events have multiple records of the same type (ex PATH, and I'm not sure what else ..).
  */
@@ -230,35 +263,10 @@ function mergeSubRecord(a, b, suffix = 0) {
 
 
 /**
- * Parse auditd's stupid log line format. This should work for syslog-ed or audit.log lines (the only diff should be
- * \x1d vs space separating "enriched" lines.
- */
-function parseLine(line) {
-  /* eslint-disable no-control-regex */
-  try {
-    const record = {};
-    const m = /^(.*)msg='(.*)'\x1d?(.*)$/;
-    if (m.test(line)) {
-      line = m.exec(line).slice(1).join(' ').replace(/^\s*|\s*$/g, '');
-    }
-    while (line) {
-      const [p, k, v] = (/^([^=]+)=("[^"]+"|[^\s\x1d]+)[\s\x1d]*/).exec(line);
-      line = line.slice(p.length);
-      record[k] = v.replace(/^"|"$/g, '');
-    }
-    record._id = (/audit\([^:]+:(\d+)\).*/).exec(record.msg)[1];
-    return record;
-  } catch (e) {
-    console.warn(`Failed to parse log line: ${e} [${line}]`);
-  }
-}
-
-
-/**
- * Add details from eventSpecs to event object.
+ * Add details from watchedEventSpecs to event object.
  */
 function eventToSpec(e) {
-  for (const spec of eventSpecs) {
+  for (const spec of watchedEventSpecs) {
     if (spec.match(e)) {
       const res = { e };
       res.desc = spec.desc instanceof Function ? spec.desc(e) : spec.desc;
@@ -298,7 +306,16 @@ const loggers = {
   }
 }
 
-// Example stdin reader. Set as main and: tail -F audit.log | auditd_log_alerts.js or as audisp plugin.
+/**
+ * Example stdin reader. Set as main and: tail -F audit.log | auditd_log_alerts.js or as audisp plugin.
+ * NOTE: For some reason auditd uses multiple lines per event with lines belonging to the same event
+ * having the same id. If we understand the conditional rules as to what types of event may be broken
+ * into many lines when we can anticipate many lines and wait for the entire event before processing.
+ * But ... we're not doing that coz meh. All line belong to a given event *should* arrive in stdin at
+ * the same time but it's possible they don't and if they dont you may miss fields from the event.
+ * NOTE: Only events that return have a matching spec in eventToSpec are reported on at all.
+ * @see eventToSpec
+ */
 function stdinReader() { // eslint-disable-line
   const level = levels[process.env.AUDITD_LOG_ALERTS_STDOUT_LEVEL] ?? levels['info'];
   const loggerName = process.env.AUDITD_LOG_ALERTS_STDOUT_LOGFMT ?? 'custom';
@@ -310,8 +327,14 @@ function stdinReader() { // eslint-disable-line
 
   process.stdin.resume();
   process.stdin.setEncoding('utf8');
+  let buffer = ''; // Last unfinished line.
   process.stdin.on('data', function (text) {
-    const lines = text.replace(/^\s*|\s*$/g, '').split('\n');
+    const lines = (buffer + text).split('\n');
+    buffer = '';
+    if(lines.length && text[text.length -1] != '\n') {
+      console.warn('Read partial line.');
+      buffer = lines.pop();
+    }
     const events = linesToEvents(lines).map(e => eventToSpec(e)).filter(e => e).filter(e => e.level <= level);
     events.map(e => logger(e));
   });
