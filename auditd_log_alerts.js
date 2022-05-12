@@ -269,17 +269,6 @@ function eventToSpec(e) {
   }
 }
 
-const nodeLogLevelMap = {
-  0: 'error',
-  1: 'error',
-  2: 'error',
-  3: 'error',
-  4: 'warn',
-  5: 'warn',
-  6: 'info',
-  7: 'debug',
-  undefined: 'log',
-};
 
 // Map some these fields to something more human readable at display time.
 const fieldNameMap = k => {
@@ -299,10 +288,10 @@ const loggers = {
         .filter(f => Object.keys(e).includes(f))
         .reduce((a, b) => a + ` ${fieldNameMap(b)}=${e[b]}`, `${desc}:`);
     };
-    console[nodeLogLevelMap[e.level]](`${levelNames[e.level]}: ${messageTmpl(e)}`);
+    console.log(`${levelNames[e.level]}: ${messageTmpl(e)}`);
   },
   logfmt: (e = {}) => {
-    console[nodeLogLevelMap[e.level]](
+    console.log(
       `desc="${e.desc}" level=${levelNames[e.level]} level_code=${e.level} ` +
       e.fields.map(f => e.e[f] ? `${fieldNameMap(f)}="${e.e[f]}"` : undefined).filter(i => i).join(' ')
     );
