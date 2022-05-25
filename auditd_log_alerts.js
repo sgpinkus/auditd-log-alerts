@@ -54,8 +54,10 @@ const stigWatchLevels = (e = {}) => {
   if (e.key === 'time-change' && e.syscall === '159' && e.success === 'yes') return levels.debug; // adjtimex - apparently this can happen alot on some systems.
   if (e.key === 'perm_mod' && e.success === 'yes') return levels.info;
   if (e.key === 'delete' && e.success === 'yes' && /^\/tmp\//.test(e['path-name'])) return levels.debug;
+  if (e.key === 'delete' && e.success === 'yes') return levels.info
+  if (e.key === 'access' && !/^\/(etc|home)\//.test(e['path-name'])) return levels.notice; // Failure access some file is also extremely noisy unfortunately.
   if (e.success !== 'yes') return levels.error;
-  return levels.notice;
+  return levels.warning;
 };
 /**
  * Hardcoded list of things we want to watch for, plus a natural lang desc of what they mean and keys
@@ -73,13 +75,13 @@ const watchedEventSpecs = [
     match: e => e.type === 'USER_LOGIN',
     desc: 'User Login',
     fields: [...commonFields, ...userFields, ...loginFields],
-    level: e => (e.res === 'failed' ? levels.debug : levels.notice),
+    level: e => (e.res === 'failed' ? levels.notice : levels.warning),
   },
   {
     match: e => e.type === 'USER_START' && e.uid === '0' && e.auid !== '0',
     desc: 'User Session Start',
     fields: [...commonFields, ...userFields, ...loginFields],
-    level: levels.debug,
+    level: levels.notice,
   },
   {
     match: e => e.type === 'ANOM_LOGIN_FAILURES',
