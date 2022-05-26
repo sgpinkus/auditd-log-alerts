@@ -211,19 +211,20 @@ function linesToEvents(lines) {
 
 /**
  * Parse auditd's stupid log line format. This should work for syslog-ed or audit.log lines (the only diff should be
- * \x1d vs space separating "enriched" lines.
+ * \x1d vs space separating "parts" lines.
  */
 function parseLine(line) {
   /* eslint-disable no-control-regex */
   const _line = line;
   let record;
   try {
-    const enriched = /^(.*)msg='(.*)'\x1d?(.*)$/;
-    if (enriched.test(line)) {
-      line = enriched.exec(line).slice(1).join(' ').replace(/^\s*|\s*$/g, '');
+    // If the line has a stupid embedded msg='' part and/or a appended enrighment part, then judt merge all k=v parts.
+    const parts = /^(.*)msg='(.*)'\x1d?(.*)$/;
+    if (parts.test(line)) {
+      line = parts.exec(line).slice(1).join(' ').replace(/^\s*|\s*$/g, '');
     }
     while (line) {
-      const [p, k, v] = (/^([^=]+)=("[^"]+"|[^\s\x1d]+)[\s\x1d]*/).exec(line);
+      const [p, k, v] = (/^([^=]+)=("[^"]+"|\{[^\}]+\}|[^\s\x1d]+)[\s\x1d]*/).exec(line);
       line = line.slice(p.length);
       record = record ? record : {};
       record[k] = v.replace(/^"|"$/g, '');
