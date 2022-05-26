@@ -179,7 +179,7 @@ const watchedEventSpecs = [
 /**
  * Take a series of raw log lines and convert them to event objects. This may entail merging lines belonging to the
  * same logical event.
- * @returns object representing an auditd event with fields lower cased and flattened.
+ * @returns Array of objects representing an auditd event with fields lower cased and flattened.
  */
 function linesToEvents(lines) {
   let currentEvent;
@@ -188,21 +188,21 @@ function linesToEvents(lines) {
 
   const records = lines.map(l => parseLine(l)).filter(l => l);
   for (let i = 0; i < records.length; i++) {
-    const record = records[i];
+    const currentRecord = records[i];
     if (!currentEvent) {
-      currentEvent = record;
+      currentEvent = currentRecord;
     }
-    else if (record._id === currentEvent._id) { // Merge
-      suffixes[record.type] = suffixes[record.type] !== undefined ? suffixes[record.type] + 1 : 0;
-      currentEvent = mergeSubRecord(currentEvent, record, suffixes[record.type]);
+    else if (currentRecord._id === currentEvent._id) { // Merge
+      suffixes[currentRecord.type] = suffixes[currentRecord.type] !== undefined ? suffixes[currentRecord.type] + 1 : 0;
+      currentEvent = mergeSubRecord(currentEvent, currentRecord, suffixes[currentRecord.type]);
     }
-    if (record._id !== currentEvent._id) {
+    if (currentRecord._id !== currentEvent._id) { // Stash last event, start a new event as current record.
       events.push(currentEvent);
-      currentEvent = record;
+      currentEvent = currentRecord;
       suffixes = {};
-      if(i === (records.length - 1)) {
-        events.push(currentEvent);
-      }
+    }
+    if (i === (records.length - 1)) { // If reach end push currentEvent (assume it's not partial)..
+      events.push(currentEvent);
     }
   }
   return events;
