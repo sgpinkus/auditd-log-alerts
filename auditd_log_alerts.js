@@ -243,7 +243,7 @@ function parseLine(line) {
  * some events have multiple records of the same type (ex PATH, and I'm not sure what else ..).
  */
 function mergeSubRecord(a, b, suffix = 0) {
-  const maybeHex = v => ((/^[0-9A-F]+$/).test(v) ? Buffer.from(v, 'hex').toString() : v ? v : '');
+  const maybeHex = v => ((/^[0-9A-F]+$/).test(v) ? Buffer.from(v, 'hex').toString().replace(/\x00/g, '') : v ? v : '');
   const subFieldFilters = {
     'CWD': ['cwd'],
     'PATH': ['name'],
