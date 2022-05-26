@@ -196,10 +196,13 @@ function linesToEvents(lines) {
       suffixes[record.type] = suffixes[record.type] !== undefined ? suffixes[record.type] + 1 : 0;
       currentEvent = mergeSubRecord(currentEvent, record, suffixes[record.type]);
     }
-    if (record._id !== currentEvent._id || i === (records.length - 1)) {
+    if (record._id !== currentEvent._id) {
       events.push(currentEvent);
       currentEvent = record;
       suffixes = {};
+      if(i === (records.length - 1)) {
+        events.push(currentEvent);
+      }
     }
   }
   return events;
