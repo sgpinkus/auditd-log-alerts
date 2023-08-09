@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * Very simple online audit.log alert filter / parser. Use in production at own peril. Alerts are
- * based off roughly looking at what audisp-prelude reports on (reports are simpler). Known keyed
- * syscalls are based on audit usr/share rule sets.
- * You can import symbols from this file and use (see cloudwatch_reader.js). This file also includes
- * a convenience parser that read from stdin and prints to stdout. Use like:
+ * Very simple online audit.log alert filter / parser. Use in production at own peril. Alerts are based off roughly
+ * looking at what audisp-prelude reports on (reports are simpler). Known syscalls are based on auditd usr/share rule sets.
+ * You can import symbols from this file and use from another stream (see cloudwatch_reader.js).
+ *
+ * This file also includes a convenience parser that read from stdin and prints to stdout. Use like:
+ *
  * `tail -F audit.log | auditd_log_alerts.js` or as audisp plugin. Use these env vars:
  *   AUDITD_LOG_ALERTS_STDOUT_LOGFMT=custom # or logfmt
  *   AUDITD_LOG_ALERTS_STDOUT_LEVEL=notice
@@ -314,12 +315,16 @@ const loggers = {
 
 /**
  * Example stdin reader. Set as main and: tail -F audit.log | auditd_log_alerts.js or as audisp plugin.
- * NOTE: For some reason auditd uses multiple lines per event with lines belonging to the same event
- * having the same id. If we understand the conditional rules as to what types of event may be broken
- * into many lines when we can anticipate many lines and wait for the entire event before processing.
- * But ... we're not doing that coz meh. All line belong to a given event *should* arrive in stdin at
- * the same time but it's possible they don't and if they dont you may miss fields from the event.
- * NOTE: Only events that return have a matching spec in eventToSpec are reported on at all.
+ *
+ * NOTE: For some reason auditd uses multiple lines per event with lines belonging to the same event having the same id.
+ * If we understand the conditional rules as to what types of event may be broken into many lines when we can anticipate
+ * many lines and wait for the entire event before processing. But we're not doing that coz meh to figuring out which
+ * events are broken up and which aren't and tabling that. Instead: We try and match lines by id if they are in the read
+ * buffer one after the other, but if they're not you may miss fields from the event. All lines of the same event should
+ * arrive at the same time.
+ *
+ * NOTE: Only events that have a matching spec in eventToSpec are reported on at all.
+ *
  * @see eventToSpec
  */
 function stdinReader() { // eslint-disable-line
