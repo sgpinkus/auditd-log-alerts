@@ -219,7 +219,7 @@ function parseLine(line) {
   const _line = line;
   let record;
   try {
-    // If the line has a stupid embedded msg='' part and/or a appended enrighment part, then judt merge all k=v parts.
+    // If the line has a stupid embedded msg='' part and/or a appended enrichment part, then judt merge all k=v parts.
     const parts = /^(.*)msg='(.*)'\x1d?(.*)$/;
     if (parts.test(line)) {
       line = parts.exec(line).slice(1).join(' ').replace(/^\s*|\s*$/g, '');
@@ -320,8 +320,8 @@ const loggers = {
  * If we understand the conditional rules as to what types of event may be broken into many lines when we can anticipate
  * many lines and wait for the entire event before processing. But we're not doing that coz meh to figuring out which
  * events are broken up and which aren't and tabling that. Instead: We try and match lines by id if they are in the read
- * buffer one after the other, but if they're not you may miss fields from the event. All lines of the same event should
- * arrive at the same time.
+ * buffer one after the other, but if they're not you may miss fields from the event, but lines of the same event should
+ * arrive at the same time (?!).
  *
  * NOTE: Only events that have a matching spec in eventToSpec are reported on at all.
  *

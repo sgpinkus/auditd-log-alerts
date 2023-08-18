@@ -1,5 +1,12 @@
 # SIMPLE AUDITD LOG ALERTS
-The script [auditd_log_alerts.js](./auditd_log_alerts.js) is a minimal NodeJS 12.x script that takes an `auditd.log` on stdin and filters it to zero or more security alert messages. Can work by simply tailing an `auditd.log`, or installed as an audisp plugin. "Alerts" are just any event that make it through the hardcoded filter rules. Alerts have a (baked in) level of severity from 0 (highest) to 7 (mirroring syslog levels). Alert messages are fairly rudimentary digest of the raw auditd events.
+The script [auditd_log_alerts.js](./auditd_log_alerts.js) is a minimal NodeJS 12.x script that takes an `auditd.log` on stdin and filters it to zero or more security alert messages. Basically it:
+
+  - Parses auditd events into single log lines in a more usable format (logfmt by default).
+  - Adds a human readable description (`desc`) field (taken from [STIG][stig]).
+  - Adds a informational level field as a *rough* indication of the severity of the event.
+  - Filters what w.h.p. useless noise for the purpose of alerting (not auditing).
+
+Can work by simply tailing an `auditd.log`, or installed as an audisp plugin. "Alerts" are just any event that make it through the hardcoded filter rules. Alerts have a (baked in) level of severity from 0 (highest) to 7 (mirroring syslog levels). Alert messages are fairly rudimentary digest of the raw auditd events.
 
 What's considered an noteworthy event is based heavily on a review of the open source `audisp-prelude` audisp plugin that came with [auditd-2.8.x][audit_src], and the [STIG][stig] and other rule sets that come packaged with auditd. This script is less sophisticated than `audisp-prelude` but is also much simpler to use (I tried and failed to get prelude working, hence this).
 
