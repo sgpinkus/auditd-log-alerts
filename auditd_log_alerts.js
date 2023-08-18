@@ -29,7 +29,7 @@ const commonFields = ['node', 'type', '_id'];
 const userFields = ['uid', 'UID', 'auid', 'AUID'];
 const loginFields = ['ses', 'acct', 'exe', 'terminal', 'addr', 'hostname', 'res'];
 const sysCallFields = ['ses', 'syscall', 'SYSCALL', 'exe', 'pid', 'proctitle', 'success', 'tty', 'key'];
-const fileInfoFields = ['cwd-cwd', 'path-name', 'path-mode'];
+const fileInfoFields = ['cwd', 'path-name-parent', 'path-name-create', 'path-name-delete', 'path-mode'];
 // Description for syscall watches.  Also serves as list of syscalls to report on - all else ignored.
 const stigWatchMessages = {
   'access': 'Unauthorized access attempts to files (unsuccessful)',
@@ -239,32 +239,34 @@ function parseLine(line) {
   return record;
 }
 
-
 /**
- * Attempt to merge records with the same event ID. Fields are named <type>-<field>[-suffix]. Suffix is used because
- * some events have multiple records of the same type (ex PATH, and I'm not sure what else ..).
+ * Audit publishes info from the same event over many records for some stupid reason. For exampe PATH, CWD, PROCTITLE.
+ * I don't know exactly where/when/what is sub recorded and AFAIK it's not documented. This folds those subrecords into
+ * the same event but tries to be a bit agnostic so can handle anything that occurs beyond known.
  */
-function mergeSubRecord(a, b, suffix = 0) {
-  const maybeHex = v => ((/^[0-9A-F]+$/).test(v) ? Buffer.from(v, 'hex').toString().replace(/\x00/g, '') : v ? v : '');
+function mergeSubRecord(a, b, count = 0) {
+  const suffix = count || '';
+  const maybeHex = v => ((/^[0-9A-F]+$/).test(v) ? Buffer.from(v, 'hex').toString().replace(/\x00/g, ' ') : v ? v : '');
+  const path = r => {
+    const _r = {}
+    _r[['path', 'name', r.nametype?.toLowerCase()].filter(v => v).join('-')] = r.name;
+    _r[['path', 'mode', r.nametype?.toLowerCase()].filter(v => v).join('-')] = r.mode;
+    return _r;
+  }
+  const name = r => {
+    if(!r.name) return {};
+    return { [`${r.type.toLowerCase()}-name-${suffix}`]: r.name };
+  }
   const subFieldFilters = {
-    'CWD': ['cwd'],
-    'PATH': ['name'],
-    'KERN_MODULE': ['name'],
+    'CWD': r => { cwd: r.cwd },
+    'PATH': path,
+    'KERN_MODULE': name,
     'PROCTITLE': r => ({ proctitle: maybeHex(r.proctitle) }),
     'EXECVE': r => ({ execve: `${r.a0 || ''} ${r.a1 || ''} ${r.a2 || ''} ${r.a3 || ''}`.trim() }), // TODO: maybeHex..
-    '*': ['name'],
+    '*': name,
   };
-  const f = subFieldFilters[b.type] ? subFieldFilters[b.type] : subFieldFilters['*'];
-  let c = {};
-  if (f instanceof Function) {
-    c = f(b);
-  }
-  else {
-    c = Object.fromEntries(f
-      .filter(k => Object.keys(b).includes(k))
-      .map(k => [`${b.type.toLowerCase()}-${k}` + (suffix ? `-${suffix}` : ''), b[k]]),
-    );
-  }
+  const f = subFieldFilters[b.type] ?? subFieldFilters['*'];
+  c = f(b);
   return { ...a, ...c };
 }
 
@@ -288,10 +290,7 @@ function eventToSpec(e) {
 // Map some these fields to something more human readable at display time.
 const fieldNameMap = k => {
   const _map = {
-    'cwd-cwd': 'cwd',
-    'path-name': 'path',
-    'path-name-1': 'path-1',
-    'path-mode': 'mode',
+    // Depr.
   };
   return _map[k] ? _map[k] : k;
 };
@@ -301,7 +300,7 @@ const loggers = {
     function messageTmpl({ e, desc, fields }) {
       return Array.from(new Set(fields))
         .filter(f => Object.keys(e).includes(f))
-        .reduce((a, b) => a + ` ${fieldNameMap(b)}=${e[b]}`, `${desc}:`);
+        .reduce((a, b) => a + ` ${fieldNameMap(b)}="${e[b]}"`, `${desc}:`);
     };
     console.log(`${levelNames[e.level]}: ${messageTmpl(e)}`);
   },
