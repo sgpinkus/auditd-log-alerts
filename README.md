@@ -1,21 +1,21 @@
 # SIMPLE AUDITD LOG ALERTS
-The script [auditd_log_alerts.js](./auditd_log_alerts.js) is a minimal NodeJS 12.x script that takes an `auditd.log` on stdin and filters it to zero or more security alert messages. Basically it:
+The script [auditd_log_alerts.js](./auditd_log_alerts.js) is a minimal NodeJS script that takes an `auditd` log text stream on stdin and filters it to zero or more security alert messages:
 
   - Parses auditd events into single log lines in a more usable format (logfmt by default).
   - Adds a human readable description (`desc`) field (taken from [STIG][stig]).
   - Adds a informational level field as a *rough* indication of the severity of the event.
-  - Filters what w.h.p. useless noise for the purpose of alerting (not auditing).
+  - Filters noise for the purpose of alerting (not auditing).
 
 Can work by simply tailing an `auditd.log`, or installed as an audisp plugin. "Alerts" are just any event that make it through the hardcoded filter rules. Alerts have a (baked in) level of severity from 0 (highest) to 7 (mirroring syslog levels). Alert messages are fairly rudimentary digest of the raw auditd events.
 
 What's considered an noteworthy event is based heavily on a review of the open source `audisp-prelude` audisp plugin that came with [auditd-2.8.x][audit_src], and the [STIG][stig] and other rule sets that come packaged with auditd. This script is less sophisticated than `audisp-prelude` but is also much simpler to use (I tried and failed to get prelude working, hence this).
 
 # USAGE
-Script can be used as is *as a script*, printing text messages on stdout:
+Can simply print text messages on stdout from some auditd log file:
 
         tail -F auditd.log | node auditd_log_alerts.js
 
-or imported *as a module* providing objects (`{ msg, level }`) to caller given log lines. See this [AWS Cloudwatch lambda handler](docs/cloudwatch_reader.skel.js) example, or C&P default console logger from the script and modify to suit.
+Can import *as a module* providing alert  objects (`{ msg, level }`) to caller given log lines. See this [AWS Cloudwatch lambda handler](docs/cloudwatch_reader.skel.js) example, or C&P default console logger from the script and modify to suit.
 
 # ANALYSIS AND DESIGN
 Main requirements and constraints:
@@ -23,7 +23,7 @@ Main requirements and constraints:
   - Single simple script file no config necessary for useful deploy.
   - Report on close to same events as `audisp-prelude` plugin, plus STIG and other watches.
   - No support for correlation.
-  - Work as a `audisp` plugin and just like `tail -F audit.log | auditd_log_alerts.js`. It turns out there is very little difference, but as a plugin is theoretically more secure.
+  - Work as a `audisp` plugin *and* just like `tail -F audit.log | auditd_log_alerts.js`. It turns out there is very little difference, but as a plugin is theoretically more secure.
 
 # NOTES
 
